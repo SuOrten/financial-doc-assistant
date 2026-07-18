@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+*.egg-info/
+
+# Environment
+.env
+
+# Data
+chroma_db/
+uploads/
+
+# Docker
+*.log
