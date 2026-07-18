@@ -1,6 +1,6 @@
 from langgraph.graph import StateGraph, END
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 from typing import TypedDict, List
 from app.ingest import get_vectorstore
 import os
@@ -12,6 +12,7 @@ class AgentState(TypedDict):
     question: str
     documents: List[str]
     answer: str
+    chat_history: List[dict]
 
 def retrieve(state: AgentState) -> AgentState:
     vectorstore = get_vectorstore()
@@ -23,12 +24,28 @@ def retrieve(state: AgentState) -> AgentState:
 def generate(state: AgentState) -> AgentState:
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
     context = "\n\n".join(state["documents"])
+
     messages = [
-        SystemMessage(content="You are a financial document assistant. Answer questions based only on the provided context. If the answer is not in the context, say so clearly. Always cite which part of the document your answer comes from."),
-        HumanMessage(content=f"Context:\n{context}\n\nQuestion: {state['question']}")
+        SystemMessage(content="""You are a financial document assistant. 
+        Answer questions based only on the provided context. 
+        If the answer is not in the context, say so clearly.
+        Always cite which part of the document your answer comes from.""")
     ]
+
+    for turn in state["chat_history"]:
+        messages.append(HumanMessage(content=turn["question"]))
+        messages.append(AIMessage(content=turn["answer"]))
+
+    messages.append(HumanMessage(content=f"Context:\n{context}\n\nQuestion: {state['question']}"))
+
     response = llm.invoke(messages)
     state["answer"] = response.content
+
+    state["chat_history"].append({
+        "question": state["question"],
+        "answer": state["answer"]
+    })
+
     return state
 
 def build_graph():
@@ -42,6 +59,19 @@ def build_graph():
 
 agent = build_graph()
 
+chat_history = []
+
 def ask_question(question: str) -> str:
-    result = agent.invoke({"question": question, "documents": [], "answer": ""})
+    global chat_history
+    result = agent.invoke({
+        "question": question,
+        "documents": [],
+        "answer": "",
+        "chat_history": chat_history
+    })
+    chat_history = result["chat_history"]
     return result["answer"]
+
+def reset_history():
+    global chat_history
+    chat_history = []

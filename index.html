@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Document Assistant</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f4f8; color: #333; }
+        header { background: #1a3c5e; color: white; padding: 20px 40px; display: flex; align-items: center; justify-content: space-between; }
+        header h1 { font-size: 22px; }
+        header span { font-size: 13px; opacity: 0.7; }
+        .container { max-width: 900px; margin: 40px auto; padding: 0 20px; }
+        .card { background: white; border-radius: 12px; padding: 28px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .card h2 { font-size: 16px; color: #1a3c5e; margin-bottom: 16px; border-bottom: 2px solid #e8f0fe; padding-bottom: 10px; }
+        .upload-area { border: 2px dashed #b0c4de; border-radius: 8px; padding: 30px; text-align: center; cursor: pointer; transition: all 0.2s; }
+        .upload-area:hover { border-color: #1a3c5e; background: #f8faff; }
+        .upload-area input { display: none; }
+        .upload-area p { color: #666; margin-top: 8px; font-size: 14px; }
+        .btn { background: #1a3c5e; color: white; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-size: 14px; transition: background 0.2s; }
+        .btn:hover { background: #2a5c8e; }
+        .btn:disabled { background: #aaa; cursor: not-allowed; }
+        .btn-danger { background: #c62828; }
+        .btn-danger:hover { background: #e53935; }
+        .status { margin-top: 12px; font-size: 13px; color: #555; }
+        .status.success { color: #2e7d32; }
+        .status.error { color: #c62828; }
+        .question-row { display: flex; gap: 10px; }
+        .question-row input { flex: 1; padding: 10px 14px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; }
+        .question-row input:focus { outline: none; border-color: #1a3c5e; }
+        .chat-box { margin-top: 20px; display: flex; flex-direction: column; gap: 16px; max-height: 500px; overflow-y: auto; }
+        .message-user { align-self: flex-end; background: #1a3c5e; color: white; padding: 10px 16px; border-radius: 12px 12px 0 12px; max-width: 70%; font-size: 14px; }
+        .message-ai { align-self: flex-start; background: #f0f4f8; border-left: 4px solid #1a3c5e; padding: 12px 16px; border-radius: 0 12px 12px 12px; max-width: 80%; font-size: 14px; line-height: 1.7; }
+        .loading { color: #666; font-size: 13px; font-style: italic; }
+        .doc-badge { display: inline-block; background: #e8f0fe; color: #1a3c5e; padding: 4px 12px; border-radius: 20px; font-size: 13px; }
+        .chat-controls { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div>
+        <h1>📄 Financial Document Assistant</h1>
+        <span>Powered by LangGraph RAG · ChromaDB · GPT-4o-mini</span>
+    </div>
+</header>
+
+<div class="container">
+
+    <div class="card">
+        <h2>📁 Upload Financial Document</h2>
+        <div class="upload-area" onclick="document.getElementById('fileInput').click()">
+            <input type="file" id="fileInput" accept=".pdf" onchange="handleFileSelect(event)">
+            <div style="font-size:36px">📂</div>
+            <p>Click to upload a PDF (annual report, prospectus, fund sheet...)</p>
+        </div>
+        <div id="fileStatus" class="status"></div>
+        <button class="btn" id="uploadBtn" onclick="uploadFile()" style="margin-top:14px" disabled>Upload & Index</button>
+        <div id="uploadStatus" class="status"></div>
+        <div id="docBadge" style="margin-top:10px; display:none">
+            <span class="doc-badge" id="docName"></span>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>💬 Ask a Question</h2>
+        <div class="chat-controls">
+            <button class="btn btn-danger" onclick="resetChat()" style="padding: 6px 16px; font-size:13px">🔄 New Conversation</button>
+        </div>
+        <div class="chat-box" id="chatBox"></div>
+        <div style="margin-top: 16px;" class="question-row">
+            <input type="text" id="questionInput" placeholder="e.g. What was the net profit in 2023?" onkeydown="if(event.key==='Enter') askQuestion()">
+            <button class="btn" onclick="askQuestion()">Ask</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    let selectedFile = null;
+
+    function handleFileSelect(event) {
+        selectedFile = event.target.files[0];
+        if (selectedFile) {
+            document.getElementById('fileStatus').textContent = `Selected: ${selectedFile.name}`;
+            document.getElementById('uploadBtn').disabled = false;
+        }
+    }
+
+    async function uploadFile() {
+        if (!selectedFile) return;
+        const btn = document.getElementById('uploadBtn');
+        const status = document.getElementById('uploadStatus');
+        btn.disabled = true;
+        status.textContent = 'Uploading and indexing...';
+        status.className = 'status';
+
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        try {
+            const response = await fetch('http://127.0.0.1:8000/upload', { method: 'POST', body: formData });
+            const data = await response.json();
+            if (response.ok) {
+                status.textContent = `✅ ${data.message} (${data.chunks_indexed} chunks indexed)`;
+                status.className = 'status success';
+                document.getElementById('docBadge').style.display = 'block';
+                document.getElementById('docName').textContent = `📄 ${selectedFile.name}`;
+                addMessage('assistant', `Document indexed successfully! I'm ready to answer questions about **${selectedFile.name}**.`);
+            } else {
+                status.textContent = `❌ Error: ${data.detail}`;
+                status.className = 'status error';
+                btn.disabled = false;
+            }
+        } catch (e) {
+            status.textContent = '❌ Could not connect to server.';
+            status.className = 'status error';
+            btn.disabled = false;
+        }
+    }
+
+    function addMessage(role, text) {
+        const chatBox = document.getElementById('chatBox');
+        const div = document.createElement('div');
+        div.className = role === 'user' ? 'message-user' : 'message-ai';
+        div.textContent = text;
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+        return div;
+    }
+
+    async function askQuestion() {
+        const input = document.getElementById('questionInput');
+        const question = input.value.trim();
+        if (!question) return;
+        input.value = '';
+
+        addMessage('user', question);
+        const loadingDiv = addMessage('assistant', '⏳ Retrieving and generating answer...');
+        loadingDiv.className = 'loading';
+
+        try {
+            const response = await fetch('http://127.0.0.1:8000/ask', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question })
+            });
+            const data = await response.json();
+            loadingDiv.className = 'message-ai';
+            loadingDiv.textContent = data.answer;
+        } catch (e) {
+            loadingDiv.className = 'message-ai';
+            loadingDiv.textContent = '❌ Error connecting to server.';
+        }
+
+        document.getElementById('chatBox').scrollTop = document.getElementById('chatBox').scrollHeight;
+    }
+
+    async function resetChat() {
+        try {
+            await fetch('http://127.0.0.1:8000/reset', { method: 'POST' });
+        } catch(e) {}
+        document.getElementById('chatBox').innerHTML = '';
+        addMessage('assistant', 'Conversation reset. Ask me anything about the uploaded document!');
+    }
+</script>
+
+</body>
+</html>

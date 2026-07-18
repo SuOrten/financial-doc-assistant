@@ -4,7 +4,7 @@ from pydantic import BaseModel
 import shutil
 import os
 from app.ingest import ingest_pdf
-from app.agent import ask_question
+from app.agent import ask_question, reset_history
 
 app = FastAPI(title="Financial Document Assistant")
 
@@ -54,3 +54,9 @@ async def ask(request: QuestionRequest):
 @app.get("/health")
 def health():
     return {"status": "healthy"}
+
+
+@app.post("/reset")
+def reset():
+    reset_history()
+    return {"message": "Conversation history cleared"}
