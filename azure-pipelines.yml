@@ -1,0 +1,26 @@
+trigger:
+  - main
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: '3.13'
+    displayName: 'Set up Python 3.13'
+
+  - script: |
+      python -m pip install --upgrade pip
+      pip install -r requirements.txt
+    displayName: 'Install dependencies'
+
+  - script: |
+      pip install pytest
+      pytest tests/ -v --tb=short
+    displayName: 'Run tests'
+    continueOnError: true
+
+  - script: |
+      docker build -t financial-doc-assistant .
+    displayName: 'Build Docker image'
